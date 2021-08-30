@@ -7,15 +7,18 @@ type Options = {
   data: string;
 };
 
-function shuffle(motorcycles) {
+function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
   return motorcycles
     .map((v) => ({v, sort: Math.random()}))
     .sort((a, b) => a.sort - b.sort)
     .map(({v}) => v);
 }
 
-function calculateRandomList(motorcyclesCustomList, motorcycles) {
-  let localCustomList = [];
+function calculateRandomList(
+  motorcyclesCustomList: mc.MotorcycleSegment[],
+  motorcycles: mc.MotorcycleSegment[]
+): mc.MotorcycleSegment[] {
+  let localCustomList: mc.MotorcycleSegment[] = [];
 
   for (const motorcycle of motorcycles) {
     motorcycle.reset();
@@ -38,7 +41,9 @@ function calculateRandomList(motorcyclesCustomList, motorcycles) {
 export const command: string = 'motorcycle <data>';
 export const description: string = 'motorcycle <data>';
 
-export const builder: CommandBuilder<Options, Options> = (yargs) =>
+// according to the documentation there should following as the type:
+// CommandBuilder<Options, Options> but the compiler could not handle it.
+export const builder: any = (yargs) =>
   yargs
     .options({
       data: { type: 'string' },
