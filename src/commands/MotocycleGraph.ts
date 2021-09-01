@@ -25,6 +25,8 @@ function calculateRandomList(
     motorcycle.resetReductionCounter();
   }
 
+  const motorcycleGraph = new mc.MotorcycleGraph({isShortcut: true});
+
   for (const customEntry of motorcyclesCustomList) {
     for (const motorcycle of motorcycles) {
       motorcycle.reset();
@@ -32,7 +34,7 @@ function calculateRandomList(
 
     customEntry.isUsed = true;
     localCustomList.push(customEntry);
-    mc.calculateMotorcycleGraph(localCustomList);
+    motorcycleGraph.calculateMotorcycleGraph(localCustomList);
   }
 
   return localCustomList;
