@@ -5,6 +5,8 @@ import * as mc from "motorcycleGraph";
 
 type Options = {
   data: string;
+  output: string;
+  greedyLevel: number;
 };
 
 function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
@@ -40,8 +42,8 @@ function calculateRandomList(
   return localCustomList;
 }
 
-export const command: string = 'motorcycle <data>';
-export const description: string = 'motorcycle <data>';
+export const command: string = 'motorcycle <data> <output> <greedyLevel>';
+export const description: string = 'motorcycle <data> <output> <greedyLevel>';
 
 // according to the documentation there should following as the type:
 // CommandBuilder<Options, Options> but the compiler could not handle it.
@@ -49,10 +51,13 @@ export const builder: any = (yargs) =>
   yargs
     .options({
       data: { type: 'string' },
+      output: { type: "string" },
+      greedyLevel: { type: "number", default: 1}
     });
 
 
 export const handler = (argv: Arguments<Options>): void => {
+
   const rawdata = fs.readFileSync(argv.data, 'utf-8');
   const obj = JSON.parse(rawdata);
 
@@ -61,11 +66,16 @@ export const handler = (argv: Arguments<Options>): void => {
   const width = 1599.0333251953125;
   const height = 580;
   const motorcycles = mc.calculateMotorcycles(points, width, height);
+  const size = motorcycles.length * argv.greedyLevel;
 
-  for (let i = 0; i < motorcycles.length; i += 1) {
+  const list: any[] = [];
+
+  for (let i = 0; i < size; i += 1) {
     const customList = shuffle(motorcycles);
     const local = calculateRandomList(customList, motorcycles);
-    const reductionCounter = local.map(m => m.reductionCounter);
-    console.log(reductionCounter);
+    const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
+    list.push(reductionCounterInformation);
   }
+
+  fs.writeFileSync(argv.output, JSON.stringify(list));
 };
