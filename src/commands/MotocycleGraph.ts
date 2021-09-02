@@ -6,7 +6,8 @@ import * as mc from "motorcycleGraph";
 type Options = {
   data: string;
   output: string;
-  greedyLevel: number;
+  greedylevel: number;
+  order: string;
 };
 
 function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
@@ -42,8 +43,22 @@ function calculateRandomList(
   return localCustomList;
 }
 
-export const command: string = 'motorcycle <data> <output> <greedyLevel>';
-export const description: string = 'motorcycle <data> <output> <greedyLevel>';
+function orderBy(motorcycles: mc.MotorcycleSegment[], order: string): mc.MotorcycleSegment[] {
+  const obj = {};
+  for (const motorcycle of motorcycles) {
+    obj[motorcycle.getNodeName()] = motorcycle;
+  }
+
+  const customList: any = [];
+  for (const nodeName of order.split(" ")) {
+    customList.push(obj[nodeName]);
+  }
+
+  return customList;
+}
+
+export const command: string = 'motorcycle';
+export const description: string = 'motorcycle';
 
 // according to the documentation there should following as the type:
 // CommandBuilder<Options, Options> but the compiler could not handle it.
@@ -51,13 +66,13 @@ export const builder: any = (yargs) =>
   yargs
     .options({
       data: { type: 'string' },
-      output: { type: "string" },
-      greedyLevel: { type: "number", default: 1}
+      output: { type: "string", demandOption: false },
+      greedylevel: { type: "number", default: 1, demandOption: false},
+      order: { type: "string", demandOption: false }
     });
 
 
 export const handler = (argv: Arguments<Options>): void => {
-
   const rawdata = fs.readFileSync(argv.data, 'utf-8');
   const obj = JSON.parse(rawdata);
 
@@ -66,16 +81,29 @@ export const handler = (argv: Arguments<Options>): void => {
   const width = 1599.0333251953125;
   const height = 580;
   const motorcycles = mc.calculateMotorcycles(points, width, height);
-  const size = motorcycles.length * argv.greedyLevel;
 
+  const size = motorcycles.length * argv.greedylevel;
   const list: any[] = [];
 
-  for (let i = 0; i < size; i += 1) {
-    const customList = shuffle(motorcycles);
+  if (argv.hasOwnProperty("order")) {
+    const customList = orderBy(motorcycles, argv.order);
     const local = calculateRandomList(customList, motorcycles);
     const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
     list.push(reductionCounterInformation);
   }
+  else {
+    for (let i = 0; i < size; i += 1) {
+      const customList = shuffle(motorcycles);
+      const local = calculateRandomList(customList, motorcycles);
+      const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
+      list.push(reductionCounterInformation);
+    }
+  }
 
-  fs.writeFileSync(argv.output, JSON.stringify(list));
+  if (argv.hasOwnProperty("output")) {
+    fs.writeFileSync(argv.output, JSON.stringify(list));
+  }
+  else {
+    console.log(list);
+  }
 };
