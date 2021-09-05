@@ -19,7 +19,8 @@ function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
 
 function calculateRandomList(
   motorcyclesCustomList: mc.MotorcycleSegment[],
-  motorcycles: mc.MotorcycleSegment[]
+  motorcycles: mc.MotorcycleSegment[],
+  intersectionCache: mc.IntersectionCache,
 ): mc.MotorcycleSegment[] {
   let localCustomList: mc.MotorcycleSegment[] = [];
 
@@ -28,7 +29,8 @@ function calculateRandomList(
     motorcycle.resetReductionCounter();
   }
 
-  const motorcycleGraph = new mc.MotorcycleGraph({isShortcut: true});
+  const motorcycleGraph = new mc.MotorcycleGraphCached({isShortcut: true, buildCache: false});
+  motorcycleGraph.setIntersectionCache(intersectionCache);
 
   for (const customEntry of motorcyclesCustomList) {
     for (const motorcycle of motorcycles) {
@@ -81,20 +83,21 @@ export const handler = (argv: Arguments<Options>): void => {
   const width = 1599.0333251953125;
   const height = 580;
   const motorcycles = mc.calculateMotorcycles(points, width, height);
+  const intersectionCache = mc.calculateIntersectionCache(motorcycles);
 
   const size = motorcycles.length * argv.greedylevel;
   const list: any[] = [];
 
   if (argv.hasOwnProperty("order")) {
     const customList = orderBy(motorcycles, argv.order);
-    const local = calculateRandomList(customList, motorcycles);
+    const local = calculateRandomList(customList, motorcycles, intersectionCache);
     const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
     list.push(reductionCounterInformation);
   }
   else {
     for (let i = 0; i < size; i += 1) {
       const customList = shuffle(motorcycles);
-      const local = calculateRandomList(customList, motorcycles);
+      const local = calculateRandomList(customList, motorcycles, intersectionCache);
       const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
       list.push(reductionCounterInformation);
     }
