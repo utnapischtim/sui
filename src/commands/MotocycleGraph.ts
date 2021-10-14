@@ -2,12 +2,14 @@ import type { Arguments, CommandBuilder } from 'yargs';
 import * as fs from 'fs';
 import * as geom from "geometric";
 import * as mc from "motorcycleGraph";
+const { PerformanceObserver, performance } = require('perf_hooks');
 
 type Options = {
   data: string;
   output: string;
   greedylevel: number;
   order: string;
+  count: number;
 };
 
 function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
@@ -15,34 +17,6 @@ function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
     .map((v) => ({v, sort: Math.random()}))
     .sort((a, b) => a.sort - b.sort)
     .map(({v}) => v);
-}
-
-function calculateRandomList(
-  motorcyclesCustomList: mc.MotorcycleSegment[],
-  motorcycles: mc.MotorcycleSegment[],
-  intersectionCache: mc.IntersectionCache,
-): mc.MotorcycleSegment[] {
-  let localCustomList: mc.MotorcycleSegment[] = [];
-
-  for (const motorcycle of motorcycles) {
-    motorcycle.reset();
-    motorcycle.resetReductionCounter();
-  }
-
-  const motorcycleGraph = new mc.MotorcycleGraphCached({isShortcut: true, buildCache: false});
-  motorcycleGraph.setIntersectionCache(intersectionCache);
-
-  for (const customEntry of motorcyclesCustomList) {
-    for (const motorcycle of motorcycles) {
-      motorcycle.reset();
-    }
-
-    customEntry.isUsed = true;
-    localCustomList.push(customEntry);
-    motorcycleGraph.calculateMotorcycleGraph(localCustomList);
-  }
-
-  return localCustomList;
 }
 
 function orderBy(motorcycles: mc.MotorcycleSegment[], order: string): mc.MotorcycleSegment[] {
@@ -70,11 +44,17 @@ export const builder: any = (yargs) =>
       data: { type: 'string' },
       output: { type: "string", demandOption: false },
       greedylevel: { type: "number", default: 1, demandOption: false},
-      order: { type: "string", demandOption: false }
+      order: { type: "string", demandOption: false },
+      count: { type: "number", demandOption: false }
     });
 
 
 export const handler = (argv: Arguments<Options>): void => {
+  if (!fs.existsSync(argv.data)) {
+    console.log("file does not exist");
+    return;
+  }
+
   const rawdata = fs.readFileSync(argv.data, 'utf-8');
   const obj = JSON.parse(rawdata);
 
@@ -82,29 +62,67 @@ export const handler = (argv: Arguments<Options>): void => {
   const points = polygon.map(o => geom.Point.fromArray(o));
   const width = 1599.0333251953125;
   const height = 580;
-  const motorcycles = mc.calculateMotorcycles(points, width, height);
-  const intersectionCache = mc.calculateIntersectionCache(motorcycles);
 
-  const size = motorcycles.length * argv.greedylevel;
+  const globalInformations = {
+    "sizes": {
+      "motorcycles": 0,
+      "intersections": 0
+    },
+    "performance": {
+      "motorcycles": 0,
+      "intersectionCache": 0,
+      "calculateRandomLists": 0
+    }
+  };
+
+  let start = 0;
+
+  start = performance.now();
+  const motorcycles = mc.calculateMotorcycles(points, width, height);
+  globalInformations["performance"]["motorcycles"] = performance.now() - start;
+
+  start = performance.now();
+  const intersectionCache = mc.calculateIntersectionCache(motorcycles);
+  globalInformations["performance"]["intersectionCache"] = performance.now() - start;
+
+
+  let size = motorcycles.length * argv.greedylevel;
+  globalInformations["sizes"]["motorcycles"] = size;
+  globalInformations["sizes"]["intersections"] = Object.keys(intersectionCache).length;
+
   const list: any[] = [];
+
+  if (argv.hasOwnProperty("count")) {
+    size = argv.count;
+  }
+
+  start = performance.now();
 
   if (argv.hasOwnProperty("order")) {
     const customList = orderBy(motorcycles, argv.order);
-    const local = calculateRandomList(customList, motorcycles, intersectionCache);
+    const local = mc.calculateRandomList(customList, intersectionCache);
     const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
     list.push(reductionCounterInformation);
   }
   else {
     for (let i = 0; i < size; i += 1) {
+
+      const localStart = performance.now();
       const customList = shuffle(motorcycles);
-      const local = calculateRandomList(customList, motorcycles, intersectionCache);
+      const local = mc.calculateRandomList(customList, intersectionCache);
+
       const reductionCounterInformation = local.map(m => m.getReductionCounterInformation());
-      list.push(reductionCounterInformation);
+      const duration = performance.now() - localStart;
+      list.push({reductionCounterInformation, duration});
     }
   }
 
+  globalInformations["performance"]["calculateRandomLists"] = performance.now() - start;
+
+  let output = {list, globalInformations};
+
   if (argv.hasOwnProperty("output")) {
-    fs.writeFileSync(argv.output, JSON.stringify(list));
+    fs.writeFileSync(argv.output, JSON.stringify(output));
   }
   else {
     console.log(list);
