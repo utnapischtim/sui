@@ -61,6 +61,15 @@ export const handler = (argv: Arguments<Options>): void => {
     return;
   }
 
+  const output_filename = argv.hasOwnProperty("output")
+    ? argv.output
+    : argv.data.replace(".json", ".motorcycle-graph.json");
+
+  if (fs.existsSync(output_filename)) {
+    console.log(`file: ${output_filename} allready exists`);
+    return;
+  }
+
   const obj = load(argv.data);
 
   const polygon = obj["polygon"].map((o) => [o.x, o.y]);
@@ -148,14 +157,6 @@ export const handler = (argv: Arguments<Options>): void => {
 
   globalInformations["performance"]["calculateRandomLists"] =
     performance.now() - start;
-
-  let output_filename;
-
-  if (argv.hasOwnProperty("output")) {
-    output_filename = argv.output;
-  } else {
-    output_filename = argv.data.replace(".json", ".motorcycle-graph.json");
-  }
 
   const output = { list, globalInformations };
 
