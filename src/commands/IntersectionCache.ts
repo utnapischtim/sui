@@ -2,17 +2,14 @@ import type { Arguments, CommandBuilder } from "yargs";
 import * as fs from "fs";
 import * as geom from "geometric";
 import * as mc from "motorcycleGraph";
+import * as cli from "./../utils";
 const { PerformanceObserver, performance } = require("perf_hooks");
 
 type Options = {
   data: string;
   output: string;
+  overrideCache: boolean;
 };
-
-function load(filename) {
-  const rawdata = fs.readFileSync(filename, "utf-8");
-  return JSON.parse(rawdata);
-}
 
 export const command: string = "intersection-cache";
 export const description: string = "intersection-cache";
@@ -23,6 +20,7 @@ export const builder: any = (yargs) =>
   yargs.options({
     data: { type: "string" },
     output: { type: "string", demandOption: false },
+    overrideCache: { type: "boolean", demandOption: false },
   });
 
 export const handler = (argv: Arguments<Options>): void => {
@@ -31,12 +29,18 @@ export const handler = (argv: Arguments<Options>): void => {
     return;
   }
 
-  const obj = load(argv.data);
+  const output_filename = argv.hasOwnProperty("output")
+    ? argv.output
+    : argv.data.replace(".json", ".intersection-cache.json");
 
-  const polygon = obj["polygon"].map((o) => [o.x, o.y]);
-  const points = polygon.map((o) => geom.Point.fromArray(o));
-  const width = 1599.0333251953125;
-  const height = 580;
+  if (fs.existsSync(output_filename) && !argv.overrideCache) {
+    console.log(`file: ${output_filename} allready exists`);
+    return;
+  }
+
+  const obj = cli.load(argv.data);
+  const points = cli.convertAnyToGeom(obj);
+  const [width, height] = cli.calculateDimensions(points);
 
   const globalInformations = {
     sizes: {
@@ -49,40 +53,31 @@ export const handler = (argv: Arguments<Options>): void => {
     },
   };
 
-  let start = 0;
-
   const motorcycles_filename = argv.data.replace(".json", ".motorcycles.json");
 
   let motorcycles;
 
   if (fs.existsSync(motorcycles_filename)) {
-    motorcycles = load(motorcycles_filename)["motorcycles"].map((o) =>
-      mc.MotorcycleSegment.build(o)
-    );
+    motorcycles = cli
+      .load(motorcycles_filename)
+      ["motorcycles"].map((o) => mc.MotorcycleSegment.build(o));
   } else {
-    start = performance.now();
+    const start = performance.now();
     motorcycles = mc.calculateMotorcycles(points, width, height);
     globalInformations["sizes"]["motorcycles"] = motorcycles.length;
-    globalInformations["performance"]["motorcycles"] =
-      performance.now() - start;
+
+    const duration = performance.now() - start;
+    globalInformations["performance"]["motorcycles"] = duration;
   }
 
-  start = performance.now();
+  const start = performance.now();
   const intersectionCache = mc.calculateIntersectionCache(motorcycles);
-  globalInformations["performance"]["intersectionCache"] =
-    performance.now() - start;
+  const duration = performance.now() - start;
+  globalInformations["performance"]["intersectionCache"] = duration;
 
   globalInformations["sizes"]["intersections"] =
     Object.keys(intersectionCache).length;
 
   const output = { intersectionCache, globalInformations };
-  let output_filename;
-
-  if (argv.hasOwnProperty("output")) {
-    output_filename = argv.output;
-  } else {
-    output_filename = argv.data.replace(".json", ".intersection-cache.json");
-  }
-
   fs.writeFileSync(output_filename, JSON.stringify(output));
 };

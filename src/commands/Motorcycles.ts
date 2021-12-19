@@ -2,17 +2,14 @@ import type { Arguments, CommandBuilder } from "yargs";
 import * as fs from "fs";
 import * as geom from "geometric";
 import * as mc from "motorcycleGraph";
+import * as cli from "./../utils";
 const { PerformanceObserver, performance } = require("perf_hooks");
 
 type Options = {
   data: string;
   output: string;
+  overrideCache: boolean;
 };
-
-function load(filename) {
-  const rawdata = fs.readFileSync(filename, "utf-8");
-  return JSON.parse(rawdata);
-}
 
 export const command: string = "motorcycles";
 export const description: string = "motorcycles";
@@ -23,20 +20,27 @@ export const builder: any = (yargs) =>
   yargs.options({
     data: { type: "string" },
     output: { type: "string", demandOption: false },
+    overrideCache: { type: "boolean", demandOption: false, default: false },
   });
 
 export const handler = (argv: Arguments<Options>): void => {
   if (!fs.existsSync(argv.data)) {
-    console.log("file does not exist");
+    console.log(`file ${argv.data} does not exist`);
     return;
   }
 
-  const obj = load(argv.data);
+  const output_filename = argv.hasOwnProperty("output")
+    ? argv.output
+    : argv.data.replace(".json", ".motorcycles.json");
 
-  const polygon = obj["polygon"].map((o) => [o.x, o.y]);
-  const points = polygon.map((o) => geom.Point.fromArray(o));
-  const width = 1599.0333251953125;
-  const height = 580;
+  if (fs.existsSync(output_filename) && !argv.overrideCache) {
+    console.log(`file: ${output_filename} allready exists`);
+    return;
+  }
+
+  const obj = cli.load(argv.data);
+  const points = cli.convertAnyToGeom(obj);
+  const [width, height] = cli.calculateDimensions(points);
 
   const globalInformations = {
     sizes: {
@@ -47,22 +51,13 @@ export const handler = (argv: Arguments<Options>): void => {
     },
   };
 
-  let start = 0;
-
-  start = performance.now();
+  const start = performance.now();
   const motorcycles = mc.calculateMotorcycles(points, width, height);
-  globalInformations["performance"]["motorcycles"] = performance.now() - start;
-
+  const duration = performance.now() - start;
+  globalInformations["performance"]["motorcycles"] = duration;
   globalInformations["sizes"]["motorcycles"] = motorcycles.length;
 
   const output = { motorcycles, globalInformations };
-  let output_filename;
-
-  if (argv.hasOwnProperty("output")) {
-    output_filename = argv.output;
-  } else {
-    output_filename = argv.data.replace(".json", ".motorcycles.json");
-  }
 
   fs.writeFileSync(output_filename, JSON.stringify(output));
 };

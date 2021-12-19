@@ -1,45 +1,22 @@
 import type { Arguments, CommandBuilder } from "yargs";
 import * as fs from "fs";
-import * as geom from "geometric";
 import * as mc from "motorcycleGraph";
+import * as cli from "./../utils";
 const { PerformanceObserver, performance } = require("perf_hooks");
 
 type Options = {
   data: string;
   output: string;
-  greedylevel: number;
+  greedyLevel: number;
   order: string;
   count: number;
+  override: boolean;
+  saveMotorcycleCache: boolean;
+  saveIntersectionCache: boolean;
+  useMotorcycleCache: boolean;
+  useIntersectionCache: boolean;
+  postfix: string;
 };
-
-function load(filename) {
-  const rawdata = fs.readFileSync(filename, "utf-8");
-  return JSON.parse(rawdata);
-}
-
-function shuffle(motorcycles: mc.MotorcycleSegment[]): mc.MotorcycleSegment[] {
-  return motorcycles
-    .map((v) => ({ v, sort: Math.random() }))
-    .sort((a, b) => a.sort - b.sort)
-    .map(({ v }) => v);
-}
-
-function orderBy(
-  motorcycles: mc.MotorcycleSegment[],
-  order: string
-): mc.MotorcycleSegment[] {
-  const obj = {};
-  for (const motorcycle of motorcycles) {
-    obj[motorcycle.getNodeName()] = motorcycle;
-  }
-
-  const customList: any = [];
-  for (const nodeName of order.split(" ")) {
-    customList.push(obj[nodeName]);
-  }
-
-  return customList;
-}
 
 export const command: string = "motorcycle-graph";
 export const description: string = "motorcycle-graph";
@@ -50,32 +27,50 @@ export const builder: any = (yargs) =>
   yargs.options({
     data: { type: "string" },
     output: { type: "string", demandOption: false },
-    greedylevel: { type: "number", default: 1, demandOption: false },
+    greedyLevel: { type: "number", demandOption: false, default: 1 },
     order: { type: "string", demandOption: false },
     count: { type: "number", demandOption: false },
+    override: { type: "boolean", demandOption: false },
+    saveMotorcycleCache: {
+      type: "boolean",
+      demandOption: false,
+      default: true,
+    },
+    saveIntersectionCache: {
+      type: "boolean",
+      demandOption: false,
+      default: true,
+    },
+    useMotorcycleCache: { type: "boolean", demandOption: false, default: true },
+    useIntersectionCache: {
+      type: "boolean",
+      demandOption: false,
+      default: true,
+    },
+    postfix: { type: "string", demandOption: false, default: "" },
   });
 
 export const handler = (argv: Arguments<Options>): void => {
+  console.log(argv);
+  return;
+
   if (!fs.existsSync(argv.data)) {
-    console.log("file does not exist");
+    console.log(`file ${argv.data} does not exist`);
     return;
   }
 
   const output_filename = argv.hasOwnProperty("output")
     ? argv.output
-    : argv.data.replace(".json", ".motorcycle-graph.json");
+    : argv.data.replace(".json", `.motorcycle-graph${argv.postfix}.json`);
 
-  if (fs.existsSync(output_filename)) {
+  if (fs.existsSync(output_filename) && !argv.override) {
     console.log(`file: ${output_filename} allready exists`);
     return;
   }
 
-  const obj = load(argv.data);
-
-  const polygon = obj["polygon"].map((o) => [o.x, o.y]);
-  const points = polygon.map((o) => geom.Point.fromArray(o));
-  const width = 1599.0333251953125;
-  const height = 580;
+  const obj = cli.load(argv.data);
+  const points = cli.convertAnyToGeom(obj);
+  const [width, height] = cli.calculateDimensions(points);
 
   const globalInformations = {
     sizes: {
@@ -89,8 +84,6 @@ export const handler = (argv: Arguments<Options>): void => {
     },
   };
 
-  let start = 0;
-
   const motorcycles_filename = argv.data.replace(".json", ".motorcycles.json");
   const intersection_cache_filename = argv.data.replace(
     ".json",
@@ -99,52 +92,53 @@ export const handler = (argv: Arguments<Options>): void => {
 
   let motorcycles;
 
-  if (fs.existsSync(motorcycles_filename)) {
-    motorcycles = load(motorcycles_filename)["motorcycles"].map((o) =>
-      mc.MotorcycleSegment.build(o)
-    );
+  if (fs.existsSync(motorcycles_filename) && argv.useMotorcycleCache) {
+    motorcycles = cli
+      .load(motorcycles_filename)
+      ["motorcycles"].map((o) => mc.MotorcycleSegment.build(o));
   } else {
-    start = performance.now();
-    motorcycles = mc.calculateMotorcycles(points, width, height);
-    globalInformations["performance"]["motorcycles"] =
-      performance.now() - start;
+    const start = performance.now();
+    motorcycles = mc.calculateMotorcycles(points, width * 2, height * 2);
+    const duration = performance.now() - start;
+    globalInformations["performance"]["motorcycles"] = duration;
   }
 
   let intersectionCache;
 
-  if (fs.existsSync(intersection_cache_filename)) {
-    intersectionCache = load(intersection_cache_filename)["intersectionCache"];
+  if (fs.existsSync(intersection_cache_filename) && argv.useIntersectionCache) {
+    intersectionCache = mc.buildIntersectionCache(
+      cli.load(intersection_cache_filename)["intersectionCache"]
+    );
   } else {
-    start = performance.now();
+    const start = performance.now();
     intersectionCache = mc.calculateIntersectionCache(motorcycles);
-    globalInformations["performance"]["intersectionCache"] =
-      performance.now() - start;
+    const duration = performance.now() - start;
+    globalInformations["performance"]["intersectionCache"] = duration;
   }
 
-  let size = motorcycles.length * argv.greedylevel;
-  globalInformations["sizes"]["motorcycles"] = size;
+  globalInformations["sizes"]["motorcycles"] = motorcycles.length;
   globalInformations["sizes"]["intersections"] =
     Object.keys(intersectionCache).length;
 
   const list: any[] = [];
-
-  if (argv.hasOwnProperty("count")) {
-    size = argv.count;
-  }
-
-  start = performance.now();
+  const size = argv.hasOwnProperty("count")
+    ? argv.count
+    : motorcycles.length * argv.greedyLevel;
 
   if (argv.hasOwnProperty("order")) {
-    const customList = orderBy(motorcycles, argv.order);
+    const start = performance.now();
+    const customList = cli.orderBy(motorcycles, argv.order);
     const local = mc.calculateRandomList(customList, intersectionCache);
     const reductionCounterInformation = local.map((m) =>
       m.getReductionCounterInformation()
     );
-    list.push(reductionCounterInformation);
+    const duration = performance.now() - start;
+    list.push({ reductionCounterInformation, duration });
   } else {
+    const start = performance.now();
     for (let i = 0; i < size; i += 1) {
       const localStart = performance.now();
-      const customList = shuffle(motorcycles);
+      const customList = cli.shuffle(motorcycles);
       const local = mc.calculateRandomList(customList, intersectionCache);
 
       const reductionCounterInformation = local.map((m) =>
@@ -153,10 +147,33 @@ export const handler = (argv: Arguments<Options>): void => {
       const duration = performance.now() - localStart;
       list.push({ reductionCounterInformation, duration });
     }
+    const duration = performance.now() - start;
+    globalInformations["performance"]["calculateRandomLists"] = duration;
   }
 
-  globalInformations["performance"]["calculateRandomLists"] =
-    performance.now() - start;
+  if (argv.saveMotorcycleCache) {
+    const motorcycleCacheOutput = { motorcycles, globalInformations };
+    const motorcycleCacheOutputFilename = argv.data.replace(
+      ".json",
+      ".motorcyles.json"
+    );
+    fs.writeFileSync(
+      motorcycleCacheOutputFilename,
+      JSON.stringify(motorcycleCacheOutput)
+    );
+  }
+
+  if (argv.saveIntersectionCache) {
+    const intersectionCacheOutput = { intersectionCache, globalInformations };
+    const intersectionCacheOutputFilename = argv.data.replace(
+      ".json",
+      ".intersection-cache.json"
+    );
+    fs.writeFileSync(
+      intersectionCacheOutputFilename,
+      JSON.stringify(intersectionCacheOutput)
+    );
+  }
 
   const output = { list, globalInformations };
 
