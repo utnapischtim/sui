@@ -42,21 +42,21 @@ export function calculateDimensions(points: geom.Point[]): [number, number] {
   const width_positive = points.reduceRight(
     (acc, cur) => (acc.x < cur.x ? cur : acc),
     { x: 0, y: 0 }
-  )[0];
+  ).x;
   const width_negative = points.reduceRight(
     (acc, cur) => (acc.x > cur.x ? cur : acc),
     { x: 0, y: 0 }
-  )[0];
+  ).x;
 
   const height_positive = points.reduceRight(
     (acc, cur) => (acc.y < cur.y ? cur : acc),
     { x: 0, y: 0 }
-  )[1];
+  ).y;
 
   const height_negative = points.reduceRight(
     (acc, cur) => (acc.y > cur.y ? cur : acc),
     { x: 0, y: 0 }
-  )[1];
+  ).y;
 
   return [
     width_positive + Math.abs(width_negative),

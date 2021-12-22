@@ -51,9 +51,6 @@ export const builder: any = (yargs) =>
   });
 
 export const handler = (argv: Arguments<Options>): void => {
-  console.log(argv);
-  return;
-
   if (!fs.existsSync(argv.data)) {
     console.log(`file ${argv.data} does not exist`);
     return;
