@@ -9,6 +9,7 @@ type Options = {
   output: string;
   greedyLevel: number;
   order: string;
+  orderFile: string;
   count: number;
   override: boolean;
   saveMotorcycleCache: boolean;
@@ -29,6 +30,7 @@ export const builder: any = (yargs) =>
     output: { type: "string", demandOption: false },
     greedyLevel: { type: "number", demandOption: false, default: 1 },
     order: { type: "string", demandOption: false },
+    orderFile: { type: "string", demandOption: false },
     count: { type: "number", demandOption: false },
     override: { type: "boolean", demandOption: false },
     saveMotorcycleCache: {
@@ -122,15 +124,31 @@ export const handler = (argv: Arguments<Options>): void => {
     ? argv.count
     : motorcycles.length * argv.greedyLevel;
 
-  if (argv.hasOwnProperty("order")) {
+  if (argv.hasOwnProperty("order") || argv.hasOwnProperty("orderFile")) {
     const start = performance.now();
-    const customList = cli.orderBy(motorcycles, argv.order);
-    const local = mc.calculateRandomList(customList, intersectionCache);
-    const reductionCounterInformation = local.map((m) =>
-      m.getReductionCounterInformation()
-    );
+    const orders = argv.hasOwnProperty("order")
+      ? argv.order.split(" ; ")
+      : fs
+          .readFileSync(argv.orderFile, "utf-8")
+          .replace("\n", "")
+          .replace('"', "")
+          .replace('"', "")
+          .split(" ; ");
+
+    for (const order of orders) {
+      if (order.length > 0) {
+        const localStart = performance.now();
+        const customList = cli.orderBy(motorcycles, order);
+        const local = mc.calculateRandomList(customList, intersectionCache);
+        const reductionCounterInformation = local.map((m) =>
+          m.getReductionCounterInformation()
+        );
+        const duration = performance.now() - localStart;
+        list.push({ reductionCounterInformation, duration });
+      }
+    }
     const duration = performance.now() - start;
-    list.push({ reductionCounterInformation, duration });
+    globalInformations["performance"]["calculateRandomLists"] = duration;
   } else {
     const start = performance.now();
     for (let i = 0; i < size; i += 1) {
