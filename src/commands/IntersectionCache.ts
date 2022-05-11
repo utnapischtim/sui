@@ -9,6 +9,7 @@ type Options = {
   data: string;
   output: string;
   overrideCache: boolean;
+  simulateCache: boolean;
 };
 
 export const command: string = "intersection-cache";
@@ -21,6 +22,7 @@ export const builder: any = (yargs) =>
     data: { type: "string" },
     output: { type: "string", demandOption: false },
     overrideCache: { type: "boolean", demandOption: false },
+    simulateCache: { type: "boolean", demandOption: false },
   });
 
 export const handler = (argv: Arguments<Options>): void => {
@@ -29,7 +31,7 @@ export const handler = (argv: Arguments<Options>): void => {
     return;
   }
 
-  const output_filename = argv.hasOwnProperty("output")
+  let output_filename = argv.hasOwnProperty("output")
     ? argv.output
     : argv.data.replace(".json", ".intersection-cache.json");
 
@@ -70,14 +72,57 @@ export const handler = (argv: Arguments<Options>): void => {
     globalInformations["performance"]["motorcycles"] = duration;
   }
 
-  const start = performance.now();
-  const intersectionCache = mc.calculateIntersectionCache(motorcycles);
-  const duration = performance.now() - start;
-  globalInformations["performance"]["intersectionCache"] = duration;
+  if (argv.hasOwnProperty("simulateCache") && argv.simulateCache) {
+    const cache = {};
+    const nodeNumbers: number[] = [];
+    for (const motorcycle of motorcycles) {
+      nodeNumbers.push(motorcycle.getNodeNumber());
+    }
 
-  globalInformations["sizes"]["intersections"] =
-    Object.keys(intersectionCache).length;
+    for (const a in nodeNumbers) {
+      for (const b in nodeNumbers) {
+        const key = parseInt(a) < parseInt(b) ? `${a}-${b}` : `${b}-${a}`;
+        if (!cache.hasOwnProperty(key)) {
+          cache[key] = { i: 0, v: [] };
+        }
+        cache[key]["i"] += 1;
+        cache[key]["v"].push([a, b, key]);
+      }
+    }
+    output_filename = argv.data.replace(
+      ".json",
+      ".intersection-cache-simulated.json"
+    );
+    fs.writeFileSync(output_filename, JSON.stringify(cache));
+  } else {
+    const start = performance.now();
+    const intersectionCache = mc.calculateIntersectionCache(motorcycles);
+    const duration = performance.now() - start;
+    globalInformations["performance"]["intersectionCache"] = duration;
 
-  const output = { intersectionCache, globalInformations };
-  fs.writeFileSync(output_filename, JSON.stringify(output));
+    globalInformations["sizes"]["intersections"] =
+      Object.keys(intersectionCache).length;
+
+    const times: any = [];
+    for (const key of Object.keys(intersectionCache)) {
+      times.push(intersectionCache[key]["pointA"]["time"]);
+      times.push(intersectionCache[key]["pointB"]["time"]);
+    }
+
+    for (let i = 0; i < times.length - 1; i += 2) {
+      if (times[i].toFixed(10) == times[i + 1].toFixed(10)) {
+        output_filename = argv.data.replace(
+          ".json",
+          ".intersection-cache-matched.json"
+        );
+        break;
+      }
+    }
+
+    const output = {
+      // intersectionCache,
+      globalInformations,
+    };
+    fs.writeFileSync(output_filename, JSON.stringify(output));
+  }
 };
